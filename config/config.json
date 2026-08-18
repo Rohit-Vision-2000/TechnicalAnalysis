@@ -1,0 +1,31 @@
+{
+  "database": {
+    "path": "data/anode.db"
+  },
+  "logging": {
+    "level": "INFO",
+    "file": "data/logs/anode.log"
+  },
+  "market": {
+    "instrument": "NIFTY",
+    "strike_step": 50,
+    "lot_size": 75,
+    "timezone": "Asia/Kolkata",
+    "session_start": "09:15",
+    "session_end": "15:30"
+  },
+  "costs": {
+    "brokerage_per_order": 20.0,
+    "slippage_bps": 5,
+    "exchange_txn_charge_pct": 0.03503,
+    "gst_pct": 18.0,
+    "stt_sell_pct": 0.1,
+    "sebi_charge_per_crore": 10.0,
+    "stamp_duty_buy_pct": 0.003
+  },
+  "paper_trading": {
+    "default_quantity_lots": 1,
+    "default_max_holding_minutes": 120,
+    "force_square_off": "15:20"
+  }
+}

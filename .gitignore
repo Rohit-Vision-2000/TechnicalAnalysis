@@ -1,0 +1,9 @@
+# Runtime data — the research database and logs are environment-local.
+# (Sample/replay fixture data under data/sample/ IS versioned.)
+data/*.db
+data/*.db-journal
+data/logs/
+
+__pycache__/
+*.pyc
+.pytest_cache/
