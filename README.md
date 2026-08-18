@@ -40,9 +40,45 @@ for the autonomous-research protocol that governs how strategies may evolve.
   `features`
 - Synthetic session generator (demo/testing only) + `analyze` CLI command
 
-Next: the decision engine (Phase 3), the paper-trading engine (Phase 4),
-the research/backtest engine (Phase 5), and Claude CLI autonomous research
-integration (Phase 6).
+**Phase 3 — Decision Engine** (done): config-driven rule evaluation per
+strategy version (`anode/decision/`) — trend/VWAP/RSI/MACD/ADX/regime/
+level-distance/liquidity/IV/PCR gates, conservative None-handling (unknown
+never passes), signal cooldown, entry band + premium-based SL/target, and
+full reason codes + features on every decision.
+
+**Phase 4 — Paper Trading Engine** (done): conservative fills (ask +
+slippage in, bid − slippage out), exit priority SL → target → time →
+EOD square-off, and a complete Indian-market cost model (brokerage, STT,
+exchange charges, GST, SEBI, stamp duty) in `anode/trading/`.
+
+**Phase 5 — Research Engine** (done): `run_session` backtester driving the
+whole pipeline over any provider, net-of-cost metrics (win rate, profit
+factor, expectancy, max drawdown, regime/direction/day breakdowns),
+gated baseline-vs-candidate comparison, and bucket-based failure analysis
+(`anode/research/`).
+
+**Phase 6 — Research workflow** (done): experiment lifecycle on the CLI
+(`new-experiment` → `compare --experiment` → `conclude-experiment` →
+`promote`), with promotion refusing anything but an ACCEPTED experiment
+whose recorded verdict is PASS. See `AGENTS.md`.
+
+**Phase 7 — Session runner + live feed** (done, live feed EXPERIMENTAL):
+`python -m anode run --source nse` polls the NSE option chain and runs the
+full analyze → decide → paper-trade → record loop until session end.
+
+## Live paper trading (during market hours)
+
+```powershell
+python -m anode run --source nse --interval 60          # until 15:30 IST
+python -m anode run --source nse --duration 30          # a 30-minute test
+python -m anode report                                   # end-of-day summary
+python -m anode failures                                  # failure clusters
+```
+
+The NSE public endpoint needs no credentials but is rate-limited and
+occasionally refuses requests; failed polls are logged and skipped. If it
+proves unreliable, write a new adapter in `anode/data/` (broker API,
+paid feed) that emits `MarketSnapshot` — nothing else changes.
 
 ## Requirements
 

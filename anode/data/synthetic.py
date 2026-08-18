@@ -10,7 +10,7 @@ stored with source='synthetic' and kept out of research conclusions.
 """
 
 import random
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from typing import Iterator, List
 
 from anode.data.provider import MarketDataProvider
@@ -110,3 +110,56 @@ class SyntheticDayProvider(MarketDataProvider):
                     )
                 )
         return options
+
+
+class SyntheticMultiDayProvider(MarketDataProvider):
+    """Several consecutive synthetic sessions (weekdays only), with price
+    continuity from one day's close to the next day's open.
+
+    Same disclaimer as SyntheticDayProvider: pipeline exercise only.
+    """
+
+    def __init__(
+        self,
+        days: int = 5,
+        start_date: str = "2026-08-03",
+        start_spot: float = 25000.0,
+        seed: int = 42,
+        expiry_weekday: int = 3,  # Thursday-style weekly expiry
+    ) -> None:
+        if days <= 0:
+            raise ValueError("days must be positive")
+        self.days = days
+        self.start_date = date.fromisoformat(start_date)
+        self.start_spot = start_spot
+        self.seed = seed
+        self.expiry_weekday = expiry_weekday
+
+    def _next_expiry(self, d: date) -> str:
+        offset = (self.expiry_weekday - d.weekday()) % 7
+        return (d + timedelta(days=offset)).isoformat()
+
+    def snapshots(self) -> Iterator[MarketSnapshot]:
+        d = self.start_date
+        spot = self.start_spot
+        produced = 0
+        while produced < self.days:
+            if d.weekday() >= 5:  # skip weekends
+                d += timedelta(days=1)
+                continue
+            day_provider = SyntheticDayProvider(
+                session_date=d.isoformat(),
+                start_spot=spot,
+                seed=self.seed + produced,
+                expiry=self._next_expiry(d),
+            )
+            last = None
+            for snap in day_provider:
+                last = snap
+                yield snap
+            if last is not None:
+                # small overnight gap for realism
+                gap = random.Random(self.seed * 1000 + produced).gauss(0, 30)
+                spot = max(1.0, last.nifty_spot + gap)
+            produced += 1
+            d += timedelta(days=1)

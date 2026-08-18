@@ -30,6 +30,15 @@
     "sebi_charge_per_crore": 10.0,
     "stamp_duty_buy_pct": 0.003
   },
+  "promotion_gates": {
+    "min_signals": 30,
+    "min_trades": 20,
+    "max_win_rate_drop": 0.0,
+    "require_profit_factor_gain": true,
+    "max_drawdown_tolerance": 1.10,
+    "require_positive_net_pnl": true,
+    "max_regime_win_rate_drop": 0.05
+  },
   "paper_trading": {
     "default_quantity_lots": 1,
     "default_max_holding_minutes": 120,

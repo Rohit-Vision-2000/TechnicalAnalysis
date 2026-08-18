@@ -52,6 +52,39 @@ A candidate may replace production only if ALL hold:
 - Positive expectancy and controlled drawdown.
 - No single market period responsible for the improvement.
 
+## Concrete workflow commands
+
+Daily operation (paper trading):
+
+    python -m anode run --source nse --interval 60        # live session (paper)
+    python -m anode report --date YYYY-MM-DD              # end-of-day summary
+    python -m anode failures --limit 500                  # failure clusters
+
+Research cycle:
+
+    python -m anode failures                               # 1. find weak spots
+    python -m anode new-experiment --hypothesis "..." \
+        --baseline STRAT-NNN --candidate STRAT-MMM         # 2. register hypothesis
+    python -m anode new-strategy --parent STRAT-NNN \
+        --description "..." --params '{"call": {...}}'     # 3. one-change candidate
+    python -m anode backtest --strategy STRAT-MMM --file DATA.csv
+    python -m anode compare --baseline STRAT-NNN --candidate STRAT-MMM \
+        --file DATA.csv --experiment EXP-KKK               # 4. gated comparison
+    python -m anode conclude-experiment --id EXP-KKK \
+        --status ACCEPTED|REJECTED --conclusion "..."      # 5. record judgment
+    python -m anode promote --candidate STRAT-MMM \
+        --experiment EXP-KKK                               # 6. only path to PRODUCTION
+
+`promote` refuses unless the experiment is ACCEPTED, names that exact
+candidate, and its recorded comparison verdict is PASS. Do not bypass this
+with `set-status` — `set-status --status PRODUCTION` is reserved for the
+initial bootstrap when no production strategy exists yet.
+
+Synthetic data (`--source synthetic`, `--synthetic-days`) exercises the
+pipeline ONLY. Never draw strategy conclusions from it and never let
+synthetic-sourced rows into a research argument (snapshots are tagged
+`source='synthetic'` for this reason).
+
 ## Working style
 
 - Be patient: collect enough observations before changing rules. Daily

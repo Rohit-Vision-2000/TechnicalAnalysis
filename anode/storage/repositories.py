@@ -186,6 +186,14 @@ class TradeRepository:
         ).fetchall()
         return [self._from_row(r) for r in rows]
 
+    def count_for_day(self, day: str) -> int:
+        """Number of trades on a YYYYMMDD day (for per-day ID sequencing)."""
+        row = self.db.conn.execute(
+            "SELECT COUNT(*) AS n FROM paper_trades WHERE trade_id LIKE ?",
+            ("TRD-{}-%".format(day),),
+        ).fetchone()
+        return row["n"]
+
     def open_trades(self) -> List[PaperTrade]:
         rows = self.db.conn.execute(
             "SELECT * FROM paper_trades WHERE status = 'OPEN' ORDER BY entry_time"

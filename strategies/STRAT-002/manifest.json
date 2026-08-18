@@ -1,0 +1,12 @@
+{
+  "version_id": "STRAT-002",
+  "created_at": "2026-08-19 03:07:31.995429",
+  "status": "DRAFT",
+  "description": "Test: tighter resistance gate (0.5%)",
+  "parent_version": "STRAT-001",
+  "config": {
+    "call": {
+      "min_level_distance_pct": 0.5
+    }
+  }
+}
