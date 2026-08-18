@@ -89,6 +89,65 @@ def cmd_replay(args, cfg) -> int:
     return 0
 
 
+def cmd_analyze(args, cfg) -> int:
+    from anode.analysis import TechnicalAnalysisEngine
+    from anode.data.synthetic import SyntheticDayProvider
+
+    if args.file:
+        provider = CsvReplayProvider(args.file)
+        source = args.file
+    else:
+        provider = SyntheticDayProvider(seed=args.seed)
+        source = "synthetic session (seed={}) — demo only, proves nothing".format(
+            args.seed
+        )
+
+    analysis_cfg = cfg.raw.get("analysis", {})
+    engine = TechnicalAnalysisEngine(
+        candle_minutes=analysis_cfg.get("candle_minutes", 5),
+        iv_change_lookback_minutes=analysis_cfg.get("iv_change_lookback_minutes", 30),
+        skew_offset_points=analysis_cfg.get("skew_offset_points", 200.0),
+        adx_trend_threshold=analysis_cfg.get("adx_trend_threshold", 25.0),
+        high_vol_atr_pct=analysis_cfg.get("high_vol_atr_pct", 0.20),
+    )
+
+    print("Analyzing: {}".format(source))
+    state = None
+    count = 0
+    for snap in provider:
+        state = engine.update(snap)
+        count += 1
+        if args.every and count % args.every == 0:
+            print(
+                "{}  spot={:>9.2f}  trend={:<8} regime={:<16} "
+                "rsi={} adx={} atr%={} vwap={} res_dist%={}".format(
+                    state.timestamp.strftime("%H:%M"), state.spot, state.trend,
+                    state.regime, _fmt(state.rsi14), _fmt(state.adx14),
+                    _fmt(state.atr_pct, 3), _fmt(state.vwap),
+                    _fmt(state.resistance_distance_pct, 3),
+                )
+            )
+    if state is None:
+        print("No snapshots produced.")
+        return 1
+
+    print()
+    print("Final TechnicalState ({} snapshots, {} candles, warmed_up={}):".format(
+        count, state.candles_seen, state.warmed_up))
+    for key, value in state.to_dict().items():
+        if key == "chain":
+            print("  chain:")
+            for ck, cv in value.items():
+                print("    {:<24} {}".format(ck, cv))
+        else:
+            print("  {:<26} {}".format(key, value))
+    return 0
+
+
+def _fmt(v, digits: int = 1):
+    return "-" if v is None else "{:.{}f}".format(v, digits)
+
+
 def cmd_snapshots(args, cfg) -> int:
     db = _open_db(cfg)
     rows = SnapshotRepository(db).recent(limit=args.limit)
@@ -265,6 +324,15 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("--file", required=True, help="path to replay CSV")
     sp.add_argument("--store", action="store_true", help="store snapshots in the database")
 
+    sp = sub.add_parser(
+        "analyze",
+        help="run technical analysis over a replay file (or a synthetic demo session)",
+    )
+    sp.add_argument("--file", default=None, help="replay CSV (omit for synthetic demo data)")
+    sp.add_argument("--seed", type=int, default=42, help="synthetic data seed")
+    sp.add_argument("--every", type=int, default=30,
+                    help="print a progress line every N snapshots (0 = final state only)")
+
     sp = sub.add_parser("snapshots", help="list stored market snapshots")
     sp.add_argument("--limit", type=int, default=20)
 
@@ -302,6 +370,7 @@ COMMANDS = {
     "init-db": cmd_init_db,
     "status": cmd_status,
     "replay": cmd_replay,
+    "analyze": cmd_analyze,
     "snapshots": cmd_snapshots,
     "decisions": cmd_decisions,
     "trades": cmd_trades,

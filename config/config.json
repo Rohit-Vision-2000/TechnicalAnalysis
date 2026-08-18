@@ -6,6 +6,13 @@
     "level": "INFO",
     "file": "data/logs/anode.log"
   },
+  "analysis": {
+    "candle_minutes": 5,
+    "iv_change_lookback_minutes": 30,
+    "skew_offset_points": 200.0,
+    "adx_trend_threshold": 25.0,
+    "high_vol_atr_pct": 0.20
+  },
   "market": {
     "instrument": "NIFTY",
     "strike_step": 50,

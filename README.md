@@ -13,7 +13,7 @@ for the autonomous-research protocol that governs how strategies may evolve.
 
 ## Current status
 
-**Phase 1 — Infrastructure** (this codebase):
+**Phase 1 — Infrastructure** (done):
 
 - Project structure and configuration system
 - Normalized market data models (`MarketSnapshot`, `OptionSnapshot`)
@@ -23,9 +23,26 @@ for the autonomous-research protocol that governs how strategies may evolve.
 - Deterministic ID and strategy-versioning scheme
 - Logging, CLI, and test suite
 
-Later phases add: technical analysis (Phase 2), the decision engine (Phase 3),
-the paper-trading engine (Phase 4), the research/backtest engine (Phase 5),
-and Claude CLI autonomous research integration (Phase 6).
+**Phase 2 — Technical Analysis Engine** (done):
+
+- Candle aggregation (`CandleBuilder`, default 5-minute, no intra-bar repainting)
+- Indicators: SMA, EMA 20/50/200, RSI(14), MACD(12/26/9), ATR(14),
+  ADX(14) with +DI/−DI, VWAP (true VWAP with volume, time-weighted proxy
+  without — flagged via `vwap_is_proxy`)
+- Support/resistance: swing pivots, day/prev-day levels, OI walls — merged
+  and deduplicated with nearest-level distances
+- Option-chain analysis: PCR (OI/volume), ATM IV + IV change, IV skew,
+  max pain, OI support/resistance strikes, OI flow, ATM liquidity (spread%)
+- Market-regime classifier: TRENDING_BULLISH / TRENDING_BEARISH /
+  SIDEWAYS / HIGH_VOLATILITY (thresholds tunable via experiments)
+- `TechnicalAnalysisEngine`: streaming snapshot → `TechnicalState`, the
+  object the decision engine will consume and that gets stored as decision
+  `features`
+- Synthetic session generator (demo/testing only) + `analyze` CLI command
+
+Next: the decision engine (Phase 3), the paper-trading engine (Phase 4),
+the research/backtest engine (Phase 5), and Claude CLI autonomous research
+integration (Phase 6).
 
 ## Requirements
 
@@ -44,6 +61,10 @@ python -m anode status
 
 # replay a CSV of market data and store snapshots
 python -m anode replay --file data\sample\sample_snapshots.csv --store
+
+# run technical analysis over a replay file, or a synthetic demo session
+python -m anode analyze --file data\my_day.csv
+python -m anode analyze --seed 7 --every 30
 
 # list stored data
 python -m anode snapshots
