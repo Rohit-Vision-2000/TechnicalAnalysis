@@ -28,10 +28,20 @@ DATASET = "senthilkumarvaithi/historical-nifty-options-2024-all-expiries"
 BASE = "https://www.kaggle.com/api/v1/datasets"
 
 
-def _request(url: str, token: str, timeout: int = 120) -> bytes:
+def _request(url: str, token: str, timeout: int = 120, attempts: int = 6) -> bytes:
+    """GET with exponential backoff on Kaggle rate limits (HTTP 429)."""
     req = urllib.request.Request(url, headers={"Authorization": "Bearer " + token})
-    with urllib.request.urlopen(req, timeout=timeout) as resp:
-        return resp.read()
+    for i in range(attempts):
+        try:
+            with urllib.request.urlopen(req, timeout=timeout) as resp:
+                return resp.read()
+        except urllib.error.HTTPError as exc:
+            if exc.code != 429 or i == attempts - 1:
+                raise
+            wait = int(exc.headers.get("Retry-After") or 0) or 30 * (2 ** i)
+            wait = min(wait, 300)
+            print("  rate limited (429): waiting {}s".format(wait))
+            time.sleep(wait)
 
 
 def list_all_files(token: str):
@@ -45,6 +55,7 @@ def list_all_files(token: str):
         page_token = d.get("nextPageTokenNullable")
         if not page_token:
             return names
+        time.sleep(1.0)  # stay under Kaggle's rate limits
 
 
 def download(name: str, dest: Path, token: str, attempts: int = 3) -> None:
@@ -87,9 +98,14 @@ def main() -> int:
         return 1
 
     dest = Path(args.dest)
-    print("listing dataset files ...")
-    names = list_all_files(token)
-    print("{} files in dataset".format(len(names)))
+    manifest = Path(__file__).with_name("kaggle_2024_manifest.json")
+    if manifest.exists():
+        names = json.loads(manifest.read_text(encoding="utf-8"))
+        print("{} files from cached manifest".format(len(names)))
+    else:
+        print("listing dataset files ...")
+        names = list_all_files(token)
+        print("{} files in dataset".format(len(names)))
 
     picks = nearest_expiry_files(names)
     spot_files = [n for n in names if "/2024Nifty/" in n]
@@ -109,6 +125,7 @@ def main() -> int:
             continue
         print("[{}/{}] {}".format(i, len(picks), name))
         download(name, out, token)
+        time.sleep(1.0)  # stay under Kaggle's rate limits
     print("done ->", dest)
     return 0
 
