@@ -488,18 +488,26 @@ def cmd_report(args, cfg) -> int:
     day = args.date  # YYYY-MM-DD
     like = "{}%".format(day)
     conn = db.conn
+    # Synthetic rows exercise the pipeline only; they must never blend into
+    # research reporting (AGENTS.md rule 6).
+    src_cond = "" if args.include_synthetic else " AND m.source != 'synthetic'"
     dec = conn.execute(
-        "SELECT status, COUNT(*) AS n FROM decisions WHERE timestamp LIKE ? "
-        "GROUP BY status", (like,),
+        "SELECT d.status, COUNT(*) AS n FROM decisions d "
+        "JOIN market_snapshots m ON d.snapshot_id = m.snapshot_id "
+        "WHERE d.timestamp LIKE ?" + src_cond + " GROUP BY d.status", (like,),
     ).fetchall()
     dec_counts = {r["status"]: r["n"] for r in dec}
     trades = conn.execute(
-        "SELECT * FROM paper_trades WHERE entry_time LIKE ? ORDER BY entry_time",
+        "SELECT t.* FROM paper_trades t "
+        "JOIN decisions d ON t.decision_id = d.decision_id "
+        "JOIN market_snapshots m ON d.snapshot_id = m.snapshot_id "
+        "WHERE t.entry_time LIKE ?" + src_cond + " ORDER BY t.entry_time",
         (like,),
     ).fetchall()
     prod = StrategyRepository(db).production()
 
-    print("ANODE daily report — {}".format(day))
+    print("ANODE daily report — {}{}".format(
+        day, " (synthetic included)" if args.include_synthetic else ""))
     print("Production strategy: {}".format(prod.version_id if prod else "(none)"))
     print("Decisions: {} signals, {} no-trade".format(
         dec_counts.get("SIGNAL", 0), dec_counts.get("NO_TRADE", 0)))
@@ -529,6 +537,15 @@ def cmd_failures(args, cfg) -> int:
     trade_repo = TradeRepository(db)
     dec_repo = DecisionRepository(db)
     trades = trade_repo.recent(limit=args.limit)
+    if not args.include_synthetic:
+        synthetic_ids = {
+            r["decision_id"] for r in db.conn.execute(
+                "SELECT d.decision_id FROM decisions d "
+                "JOIN market_snapshots m ON d.snapshot_id = m.snapshot_id "
+                "WHERE m.source = 'synthetic'"
+            ).fetchall()
+        }
+        trades = [t for t in trades if t.decision_id not in synthetic_ids]
     decisions = {}
     for t in trades:
         d = dec_repo.get(t.decision_id)
@@ -709,10 +726,14 @@ def build_parser() -> argparse.ArgumentParser:
     sp = sub.add_parser("report", help="daily summary report")
     sp.add_argument("--date", default=datetime.now().strftime("%Y-%m-%d"),
                     help="YYYY-MM-DD (default today)")
+    sp.add_argument("--include-synthetic", action="store_true",
+                    help="include synthetic-sourced rows (pipeline debugging only)")
 
     sp = sub.add_parser("failures", help="failure analysis over recorded trades")
     sp.add_argument("--limit", type=int, default=500,
                     help="analyze the most recent N trades")
+    sp.add_argument("--include-synthetic", action="store_true",
+                    help="include synthetic-sourced trades (pipeline debugging only)")
 
     sp = sub.add_parser(
         "run", help="run a paper-trading session (live NSE / synthetic / file)"
