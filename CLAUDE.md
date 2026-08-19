@@ -41,4 +41,8 @@ protocol** (hard rules, research cycle, promotion criteria, exact commands).
   are `buyPrice1`/`sellPrice1`).
 - Live snapshots are stored with `source='live'` (not 'nse').
 - First real market data collection started 2026-08-19 ~10:52 IST.
+  Day 1 yielded only 47 snapshots (10:52-11:43): the feed runs as a Claude
+  Code background task and died each time that process exited. Warmup now
+  reseeds from stored snapshots on restart (run --source nse), and
+  report/failures exclude synthetic rows unless --include-synthetic.
   Research conclusions still need weeks of history. Be patient.
