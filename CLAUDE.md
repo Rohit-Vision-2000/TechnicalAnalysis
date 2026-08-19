@@ -34,8 +34,11 @@ protocol** (hard rules, research cycle, promotion criteria, exact commands).
 ## Current state (update this section as it changes)
 
 - Phases 1–7 built and committed; 135 tests passing.
-- NSE live provider (`anode/data/live.py`) NOT yet verified against a live
-  market — first live test pending. If NSE blocks, write a new adapter
-  emitting MarketSnapshot; nothing downstream changes.
-- No real market data collected yet. Research conclusions are impossible
-  until real paper-trade history accumulates. Be patient.
+- NSE live provider VERIFIED live on 2026-08-19. NSE had retired
+  `/api/option-chain-indices` (404); `anode/data/live.py` now uses the v3
+  API (`option-chain-contract-info` for expiries, then
+  `option-chain-v3?type=Indices&symbol=NIFTY&expiry=...`; bid/ask fields
+  are `buyPrice1`/`sellPrice1`).
+- Live snapshots are stored with `source='live'` (not 'nse').
+- First real market data collection started 2026-08-19 ~10:52 IST.
+  Research conclusions still need weeks of history. Be patient.

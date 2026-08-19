@@ -26,7 +26,15 @@ from anode.models import MarketSnapshot, OptionSnapshot
 log = logging.getLogger(__name__)
 
 NSE_HOME = "https://www.nseindia.com/option-chain"
-NSE_API = "https://www.nseindia.com/api/option-chain-indices?symbol=NIFTY"
+# NSE retired /api/option-chain-indices (404 as of 2026-08-19). The v3 API
+# requires an explicit expiry, which comes from the contract-info endpoint.
+NSE_CONTRACT_INFO = (
+    "https://www.nseindia.com/api/option-chain-contract-info?symbol=NIFTY"
+)
+NSE_API = (
+    "https://www.nseindia.com/api/option-chain-v3"
+    "?type=Indices&symbol=NIFTY&expiry={expiry}"
+)
 
 HEADERS = {
     "User-Agent": (
@@ -74,6 +82,7 @@ class NseLiveProvider(MarketDataProvider):
             urllib.request.HTTPCookieProcessor(self._jar)
         )
         self._primed = False
+        self._nearest_expiry = None  # raw NSE format, e.g. '25-Aug-2026'
 
     # ------------------------------------------------------------------ HTTP
 
@@ -89,17 +98,32 @@ class NseLiveProvider(MarketDataProvider):
         self._get(NSE_HOME)
         self._primed = True
 
+    def _fetch_nearest_expiry(self) -> str:
+        raw = self._get(NSE_CONTRACT_INFO)
+        payload = json.loads(raw.decode("utf-8"))
+        expiries = payload.get("expiryDates") or []
+        if not expiries:
+            raise ValueError("NSE contract-info returned no expiry dates")
+        return expiries[0]
+
+    def _fetch_chain(self) -> bytes:
+        if self._nearest_expiry is None:
+            self._nearest_expiry = self._fetch_nearest_expiry()
+        return self._get(NSE_API.format(expiry=self._nearest_expiry))
+
     def fetch_snapshot(self) -> MarketSnapshot:
         """One normalized snapshot from the NSE option-chain API."""
         if not self._primed:
             self._prime_cookies()
         try:
-            raw = self._get(NSE_API)
+            raw = self._fetch_chain()
         except Exception:
             # session cookies may have expired — re-prime once and retry
+            # (also re-resolve the expiry in case the cached one went stale)
             self._primed = False
+            self._nearest_expiry = None
             self._prime_cookies()
-            raw = self._get(NSE_API)
+            raw = self._fetch_chain()
         payload = json.loads(raw.decode("utf-8"))
         return self._normalize(payload)
 
@@ -108,10 +132,9 @@ class NseLiveProvider(MarketDataProvider):
     def _normalize(self, payload: dict) -> MarketSnapshot:
         records = payload["records"]
         spot = float(records["underlyingValue"])
-        expiries = records.get("expiryDates") or []
-        if not expiries:
-            raise ValueError("NSE payload has no expiry dates")
-        nearest_raw = expiries[0]
+        nearest_raw = self._nearest_expiry
+        if not nearest_raw:
+            raise ValueError("no expiry resolved for NSE chain")
         nearest_iso = _parse_expiry(nearest_raw)
 
         atm = round(spot / self.strike_step) * self.strike_step
@@ -120,7 +143,8 @@ class NseLiveProvider(MarketDataProvider):
 
         options: List[OptionSnapshot] = []
         for row in records.get("data", []):
-            if row.get("expiryDate") != nearest_raw:
+            # v3 rows carry the expiry under 'expiryDates' (raw format)
+            if row.get("expiryDates") not in (None, nearest_raw):
                 continue
             strike = float(row["strikePrice"])
             if not (lo <= strike <= hi):
@@ -132,8 +156,8 @@ class NseLiveProvider(MarketDataProvider):
                 ltp = float(leg.get("lastPrice") or 0.0)
                 if ltp <= 0:
                     continue
-                bid = float(leg.get("bidprice") or 0.0) or None
-                ask = float(leg.get("askPrice") or 0.0) or None
+                bid = float(leg.get("buyPrice1") or 0.0) or None
+                ask = float(leg.get("sellPrice1") or 0.0) or None
                 iv = float(leg.get("impliedVolatility") or 0.0) or None
                 options.append(OptionSnapshot(
                     expiry=nearest_iso,
