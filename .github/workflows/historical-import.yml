@@ -50,4 +50,4 @@ jobs:
           git commit -m "Import 2024 historical option data (Kaggle, nearest expiry) [skip ci]" || echo "nothing to commit"
           git pull --rebase origin master || true
           git push || (git pull --rebase origin master && git push)
-# retrigger: secret check
+# retrigger: secret installed via API
