@@ -66,9 +66,24 @@ def main() -> int:
     ap.add_argument("--dest", default="work/kaggle2024")
     args = ap.parse_args()
 
-    token = os.environ.get("KAGGLE_API_TOKEN", "").strip()
+    token = os.environ.get("KAGGLE_API_TOKEN", "").strip().strip("'\"")
+    # tolerate a pasted shell line: export KAGGLE_API_TOKEN=KGAT_...
+    if "KAGGLE_API_TOKEN=" in token:
+        token = token.split("KAGGLE_API_TOKEN=", 1)[1].strip().strip("'\"")
     if not token:
-        print("KAGGLE_API_TOKEN is not set", file=sys.stderr)
+        print("ERROR: the KAGGLE_API_TOKEN secret is not set (or empty). "
+              "Add it under Settings -> Secrets and variables -> Actions.",
+              file=sys.stderr)
+        return 1
+    if not token.startswith("KGAT_"):
+        print("WARNING: token does not look like a KGAT_ token; trying anyway")
+    try:
+        _request(BASE + "/view/" + DATASET, token, timeout=30)
+    except Exception as exc:
+        print("ERROR: Kaggle rejected the token ({}). Check that the secret "
+              "value is ONLY the token itself, e.g. KGAT_xxxx, with no "
+              "'export ...' prefix, spaces, or quotes.".format(exc),
+              file=sys.stderr)
         return 1
 
     dest = Path(args.dest)
