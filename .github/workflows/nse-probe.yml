@@ -1,0 +1,70 @@
+# One-shot probe: can a GitHub Actions runner reach NSE's option-chain API?
+# NSE blocks many datacenter IPs; this answers whether Actions can serve as
+# the daily market-data collector. Result is committed to data/probe/.
+name: nse-probe
+
+on:
+  push:
+    paths:
+      - ".github/workflows/nse-probe.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Probe NSE endpoints
+        run: |
+          set +e
+          UA="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
+          OUT=data/probe/nse-actions-probe.txt
+          mkdir -p data/probe
+          {
+            echo "probe run: $(date -u +%Y-%m-%dT%H:%M:%SZ) (GitHub Actions, ubuntu-latest)"
+            echo "runner public IP: $(curl -s --max-time 10 ifconfig.me) ($(curl -s --max-time 10 ipinfo.io/country))"
+            echo
+            echo "--- step a: prime cookies on /option-chain ---"
+            curl -s -c /tmp/jar -o /tmp/home.html -w "http=%{http_code} bytes=%{size_download} time=%{time_total}s exit_ok\n" \
+              --max-time 20 -A "$UA" -H "Accept-Language: en-US,en;q=0.9" \
+              "https://www.nseindia.com/option-chain" || echo "curl exit code: $?"
+            echo
+            echo "--- step b: contract-info (expiries) ---"
+            curl -s -b /tmp/jar -o /tmp/ci.json -w "http=%{http_code} bytes=%{size_download} time=%{time_total}s\n" \
+              --max-time 20 -A "$UA" -H "Accept: application/json" \
+              -H "Referer: https://www.nseindia.com/option-chain" \
+              "https://www.nseindia.com/api/option-chain-contract-info?symbol=NIFTY" || echo "curl exit code: $?"
+            EXPIRY=$(python3 -c "import json;print(json.load(open('/tmp/ci.json'))['expiryDates'][0])" 2>/dev/null)
+            echo "nearest expiry parsed: ${EXPIRY:-FAILED}"
+            echo
+            echo "--- step c: option-chain-v3 ---"
+            if [ -n "$EXPIRY" ]; then
+              curl -s -b /tmp/jar -o /tmp/v3.json -w "http=%{http_code} bytes=%{size_download} time=%{time_total}s\n" \
+                --max-time 20 -A "$UA" -H "Accept: application/json" \
+                -H "Referer: https://www.nseindia.com/option-chain" \
+                "https://www.nseindia.com/api/option-chain-v3?type=Indices&symbol=NIFTY&expiry=$EXPIRY" || echo "curl exit code: $?"
+              python3 -c "import json;r=json.load(open('/tmp/v3.json'))['records'];print('spot:',r['underlyingValue'],'rows:',len(r['data']))" 2>/dev/null || echo "v3 payload parse FAILED"
+            else
+              echo "skipped (no expiry)"
+            fi
+            echo
+            echo "--- step d: real provider end-to-end ---"
+            python3 -c "
+          from anode.data.live import NseLiveProvider
+          s = NseLiveProvider().fetch_snapshot()
+          print('VERDICT: REACHABLE — spot', s.nifty_spot, 'legs', len(s.options), 'expiry', s.options[0].expiry)
+          " 2>&1 || echo "VERDICT: BLOCKED — provider raised (see errors above)"
+          } | tee "$OUT"
+
+      - name: Commit probe result
+        run: |
+          git config user.name "nse-probe[bot]"
+          git config user.email "actions@github.com"
+          git add data/probe/nse-actions-probe.txt
+          git commit -m "NSE Actions probe result [skip ci]" || echo "nothing to commit"
+          git push
