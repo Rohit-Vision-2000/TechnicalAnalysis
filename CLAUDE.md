@@ -45,4 +45,12 @@ protocol** (hard rules, research cycle, promotion criteria, exact commands).
   Code background task and died each time that process exited. Warmup now
   reseeds from stored snapshots on restart (run --source nse), and
   report/failures exclude synthetic rows unless --include-synthetic.
+- Since 2026-08-20 collection runs on GitHub Actions (user's machine can't
+  stay up; Anthropic cloud egress blocks NSE, but Actions runners reach it
+  — verified). `.github/workflows/nse-collect.yml`: two legs per trading
+  day -> `data/collected/YYYY-MM-DD.csv` (replay format), EOD merge +
+  fresh-DB deterministic replay (init-db, sync-strategies, set-status
+  bootstrap) + committed report in `data/reports/`. A claude.ai routine
+  ("ANODE daily research review", 10:45 UTC weekdays) clones the public
+  repo read-only and reports the research summary.
   Research conclusions still need weeks of history. Be patient.
