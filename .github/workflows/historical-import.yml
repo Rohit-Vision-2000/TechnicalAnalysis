@@ -9,6 +9,9 @@ name: historical-import
 
 on:
   workflow_dispatch:
+  push:
+    paths:
+      - ".github/workflows/historical-import.yml"
 
 permissions:
   contents: write
