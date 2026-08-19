@@ -16,7 +16,7 @@ import json
 import logging
 import time as time_mod
 import urllib.request
-from datetime import datetime, time as dtime
+from datetime import datetime, time as dtime, timedelta, timezone
 from http.cookiejar import CookieJar
 from typing import Iterator, List, Optional
 
@@ -51,6 +51,15 @@ MONTHS = {
     "Jan": 1, "Feb": 2, "Mar": 3, "Apr": 4, "May": 5, "Jun": 6,
     "Jul": 7, "Aug": 8, "Sep": 9, "Oct": 10, "Nov": 11, "Dec": 12,
 }
+
+# Market time is IST (no DST). Snapshots and session clocks must use IST
+# regardless of the host's local timezone (GitHub runners are UTC).
+IST = timezone(timedelta(hours=5, minutes=30), "IST")
+
+
+def now_ist() -> datetime:
+    """Naive IST wall-clock time (matches stored snapshot timestamps)."""
+    return datetime.now(IST).replace(tzinfo=None)
 
 
 def _parse_expiry(s: str) -> str:
@@ -174,7 +183,7 @@ class NseLiveProvider(MarketDataProvider):
         if not options:
             raise ValueError("NSE payload produced no usable option rows")
         return MarketSnapshot(
-            timestamp=datetime.now().replace(microsecond=0),
+            timestamp=now_ist().replace(microsecond=0),
             nifty_spot=spot,
             options=options,
         )
@@ -185,7 +194,7 @@ class NseLiveProvider(MarketDataProvider):
         start = time_mod.monotonic()
         failures = 0
         while True:
-            now = datetime.now()
+            now = now_ist()
             if now.time() >= self.session_end:
                 log.info("session end %s reached — stopping feed", self.session_end)
                 return

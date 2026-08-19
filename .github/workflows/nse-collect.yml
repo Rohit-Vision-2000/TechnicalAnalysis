@@ -1,0 +1,118 @@
+# Daily NIFTY option-chain collection on GitHub-hosted runners.
+#
+# A single Actions job maxes out at 6h; the 6h15m market session is split
+# into two legs. Leg B ends the day by merging both legs, replaying the
+# whole history through the paper-trading pipeline on a fresh DB, and
+# committing the day's report.
+#
+# PAPER TRADING ONLY — this repo cannot place orders by design.
+name: nse-collect
+
+on:
+  schedule:
+    - cron: "40 3 * * 1-5"   # 09:10 IST — leg A (09:15–12:20)
+    - cron: "50 6 * * 1-5"   # 12:20 IST — leg B (12:20–15:30) + EOD
+  workflow_dispatch:
+    inputs:
+      leg:
+        description: "Force leg: a or b (default: by clock)"
+        required: false
+
+permissions:
+  contents: write
+
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 355
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Determine leg and date
+        id: cfg
+        run: |
+          LEG="${{ github.event.inputs.leg }}"
+          if [ -z "$LEG" ]; then
+            if [ "$(date -u +%H)" -lt 6 ]; then LEG=a; else LEG=b; fi
+          fi
+          echo "leg=$LEG" >> "$GITHUB_OUTPUT"
+          echo "date=$(TZ=Asia/Kolkata date +%F)" >> "$GITHUB_OUTPUT"
+
+      - name: Collect leg A (09:15–12:20 IST)
+        if: steps.cfg.outputs.leg == 'a'
+        run: python3 -m anode collect --out "data/collected/${{ steps.cfg.outputs.date }}-a.csv" --open 09:15 --until 12:20
+
+      - name: Collect leg B (12:20–15:30 IST)
+        if: steps.cfg.outputs.leg == 'b'
+        run: python3 -m anode collect --out "data/collected/${{ steps.cfg.outputs.date }}-b.csv" --open 12:20 --until 15:30
+
+      - name: Merge legs into the day file (leg B)
+        if: steps.cfg.outputs.leg == 'b'
+        run: |
+          python3 - "${{ steps.cfg.outputs.date }}" <<'EOF'
+          import csv, sys
+          from pathlib import Path
+          date = sys.argv[1]
+          base = Path("data/collected")
+          parts = [base / f"{date}-a.csv", base / f"{date}-b.csv"]
+          rows, seen_ts, header = [], set(), None
+          for p in parts:
+              if not p.exists():
+                  print(f"missing {p} (leg may have failed)"); continue
+              with open(p, newline="", encoding="utf-8") as fh:
+                  r = csv.reader(fh)
+                  h = next(r, None)
+                  if header is None: header = h
+                  file_ts = set()
+                  for row in r:
+                      if row[0] in seen_ts and row[0] not in file_ts:
+                          continue  # boundary minute duplicated across legs
+                      file_ts.add(row[0]); rows.append(row)
+                  seen_ts |= file_ts
+          if header and rows:
+              rows.sort(key=lambda r: r[0])
+              out = base / f"{date}.csv"
+              with open(out, "w", newline="", encoding="utf-8") as fh:
+                  w = csv.writer(fh); w.writerow(header); w.writerows(rows)
+              print(f"merged {len(rows)} rows -> {out}")
+          else:
+              print("nothing to merge")
+          EOF
+
+      - name: EOD — rebuild DB, replay all days, write report (leg B)
+        if: steps.cfg.outputs.leg == 'b'
+        run: |
+          set -e
+          DATE="${{ steps.cfg.outputs.date }}"
+          python3 -m anode init-db
+          python3 -m anode sync-strategies
+          python3 -m anode set-status --version STRAT-001 --status production
+          FOUND=0
+          for f in $(ls data/collected/????-??-??.csv 2>/dev/null | sort); do
+            echo "=== replaying $f ==="
+            python3 -m anode run --source file --file "$f"
+            FOUND=1
+          done
+          if [ "$FOUND" = "1" ]; then
+            mkdir -p data/reports
+            {
+              echo "(data source: live NSE collected via GitHub Actions, replayed deterministically)"
+              python3 -m anode report --date "$DATE"
+              echo
+              python3 -m anode failures --limit 500
+            } > "data/reports/$DATE.txt"
+            cat "data/reports/$DATE.txt"
+          fi
+
+      - name: Commit collected data and reports
+        if: always()
+        run: |
+          git config user.name "anode-collector[bot]"
+          git config user.email "actions@github.com"
+          git add data/collected data/reports 2>/dev/null || true
+          if git commit -m "Market data ${{ steps.cfg.outputs.date }} leg ${{ steps.cfg.outputs.leg }} [skip ci]"; then
+            git pull --rebase origin master || true
+            git push || (git pull --rebase origin master && git push)
+          else
+            echo "nothing to commit"
+          fi

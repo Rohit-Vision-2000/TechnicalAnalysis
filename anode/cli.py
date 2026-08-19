@@ -262,6 +262,36 @@ def cmd_new_strategy(args, cfg) -> int:
     return 0
 
 
+def cmd_sync_strategies(args, cfg) -> int:
+    """Import strategies/*/manifest.json into the DB (skip ones present).
+
+    For bootstrapping an ephemeral environment (fresh clone has no DB).
+    Manifests carry creation-time status; production must still be set
+    explicitly via set-status (initial bootstrap) or promote.
+    """
+    db = _open_db(cfg)
+    repo = StrategyRepository(db)
+    existing = set(repo.all_ids())
+    imported = 0
+    for mf in sorted((REPO_ROOT / "strategies").glob("*/manifest.json")):
+        m = json.loads(mf.read_text(encoding="utf-8"))
+        if m["version_id"] in existing:
+            continue
+        repo.save(StrategyVersion(
+            version_id=m["version_id"],
+            created_at=datetime.fromisoformat(m["created_at"]),
+            status=m.get("status", StrategyStatus.DRAFT),
+            description=m.get("description", ""),
+            parent_version=m.get("parent_version"),
+            config=m.get("config") or {},
+        ))
+        imported += 1
+    print("Imported {} strategies from strategies/ ({} already present)".format(
+        imported, len(existing)))
+    db.close()
+    return 0
+
+
 def cmd_set_status(args, cfg) -> int:
     db = _open_db(cfg)
     StrategyRepository(db).set_status(args.version, args.status.upper())
@@ -619,9 +649,9 @@ def cmd_run(args, cfg) -> int:
     # mid-session does not restart the (candle-based) warmup from zero.
     seeds = None
     if source == "live" and store is not None:
-        from datetime import date
+        from anode.data.live import now_ist
 
-        seeds = store["snapshots"].for_day(date.today().isoformat(), "live")
+        seeds = store["snapshots"].for_day(now_ist().date().isoformat(), "live")
         if seeds:
             print("Seeding warmup from {} stored snapshots (today, source=live)".format(
                 len(seeds)))
@@ -633,6 +663,22 @@ def cmd_run(args, cfg) -> int:
         result.snapshots_processed, len(result.signals), len(result.trades)))
     _print_metrics(result.metrics)
     db.close()
+    return 0
+
+
+def cmd_collect(args, cfg) -> int:
+    from anode.data.collect import collect
+
+    print("COLLECT: live NSE -> {} (every {}s, {} to {} IST)".format(
+        args.out, args.interval, args.open_time, args.until))
+    print("Paper trading only. This command only reads market data.")
+    written = collect(
+        args.out,
+        interval_seconds=args.interval,
+        open_time=args.open_time,
+        until=args.until,
+    )
+    print("Collected {} snapshots into {}".format(written, args.out))
     return 0
 
 
@@ -676,6 +722,11 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("--description", required=True)
     sp.add_argument("--parent", default=None, help="parent strategy version id")
     sp.add_argument("--params", default=None, help="strategy parameters as a JSON string")
+
+    sub.add_parser(
+        "sync-strategies",
+        help="import strategies/*/manifest.json into the DB (bootstrap)",
+    )
 
     sp = sub.add_parser("set-status", help="change a strategy version's status")
     sp.add_argument("--version", required=True)
@@ -749,6 +800,19 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("--seed", type=int, default=42, help="seed for --source synthetic")
     sp.add_argument("--no-store", action="store_true",
                     help="do not persist to the database (dry run)")
+
+    sp = sub.add_parser(
+        "collect",
+        help="collect live NSE snapshots into a replay-format CSV "
+             "(for unattended runs, e.g. GitHub Actions)",
+    )
+    sp.add_argument("--out", required=True, help="output CSV path")
+    sp.add_argument("--interval", type=int, default=60,
+                    help="poll interval in seconds")
+    sp.add_argument("--open", dest="open_time", default="09:15",
+                    help="IST market open — waits until then (HH:MM)")
+    sp.add_argument("--until", default="15:30",
+                    help="IST stop time (HH:MM)")
     return p
 
 
@@ -762,6 +826,7 @@ COMMANDS = {
     "trades": cmd_trades,
     "strategies": cmd_strategies,
     "new-strategy": cmd_new_strategy,
+    "sync-strategies": cmd_sync_strategies,
     "set-status": cmd_set_status,
     "new-experiment": cmd_new_experiment,
     "experiments": cmd_experiments,
@@ -772,6 +837,7 @@ COMMANDS = {
     "report": cmd_report,
     "failures": cmd_failures,
     "run": cmd_run,
+    "collect": cmd_collect,
 }
 
 
