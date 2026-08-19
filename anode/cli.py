@@ -597,8 +597,20 @@ def cmd_run(args, cfg) -> int:
             "decisions": DecisionRepository(db),
             "trades": TradeRepository(db),
         }
+
+    # Rebuild indicator state from today's stored snapshots so a restart
+    # mid-session does not restart the (candle-based) warmup from zero.
+    seeds = None
+    if source == "live" and store is not None:
+        from datetime import date
+
+        seeds = store["snapshots"].for_day(date.today().isoformat(), "live")
+        if seeds:
+            print("Seeding warmup from {} stored snapshots (today, source=live)".format(
+                len(seeds)))
+
     result = run_session(provider, strategy, cfg.raw, store=store,
-                         snapshot_source=source)
+                         snapshot_source=source, seed_snapshots=seeds)
     print()
     print("Session complete: {} snapshots, {} signals, {} trades closed".format(
         result.snapshots_processed, len(result.signals), len(result.trades)))

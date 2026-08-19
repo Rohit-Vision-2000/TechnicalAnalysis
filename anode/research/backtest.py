@@ -56,6 +56,7 @@ def run_session(
     app_config: Optional[Dict[str, Any]] = None,
     store: Optional[Dict[str, Any]] = None,
     snapshot_source: str = "replay",
+    seed_snapshots: Optional[Iterable[MarketSnapshot]] = None,
 ) -> BacktestResult:
     """Run the full pipeline over a snapshot stream.
 
@@ -63,6 +64,9 @@ def run_session(
     store: optional dict of repositories to persist everything:
         {"snapshots": SnapshotRepository, "decisions": DecisionRepository,
          "trades": TradeRepository}
+    seed_snapshots: already-stored snapshots replayed through the technical
+        analysis engine ONLY, so indicator warmup survives an intraday
+        restart. Seeds are never stored, never produce decisions or trades.
     """
     app_config = app_config or {}
     analysis_cfg = app_config.get("analysis", {})
@@ -92,6 +96,13 @@ def run_session(
         "quantity_lots", paper_cfg.get("default_quantity_lots", 1)
     )
     max_open = de.config["engine"].get("max_open_positions", 1)
+
+    seeded = 0
+    for seed in seed_snapshots or []:
+        ta.update(seed)
+        seeded += 1
+    if seeded:
+        log.info("seeded technical state from %d stored snapshots", seeded)
 
     result = BacktestResult(strategy_version=strategy.version_id)
     last_snapshot: Optional[MarketSnapshot] = None

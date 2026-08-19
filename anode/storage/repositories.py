@@ -87,6 +87,20 @@ class SnapshotRepository:
             nearest_expiry=row["nearest_expiry"],
         )
 
+    def for_day(self, day: str, source: str) -> List[MarketSnapshot]:
+        """All snapshots for one day (YYYY-MM-DD) and source, oldest first.
+
+        Used to rebuild indicator state after an intraday restart; the
+        options are loaded too because chain analysis needs them.
+        """
+        rows = self.db.conn.execute(
+            "SELECT snapshot_id FROM market_snapshots "
+            "WHERE source = ? AND timestamp >= ? AND timestamp < ? "
+            "ORDER BY timestamp",
+            (source, day + " 00:00:00", day + " 23:59:59.999999"),
+        ).fetchall()
+        return [self.get(r["snapshot_id"]) for r in rows]
+
     def recent(self, limit: int = 20) -> List[dict]:
         rows = self.db.conn.execute(
             "SELECT snapshot_id, timestamp, nifty_spot, atm_strike, nearest_expiry, "
