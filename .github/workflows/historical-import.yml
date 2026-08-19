@@ -1,0 +1,49 @@
+# One-shot import of the Kaggle 2024 NIFTY options dataset (Apache 2.0).
+# Downloads ~250 nearest-expiry day files + monthly spot files in the
+# runner (nothing touches anyone's local machine), converts them to
+# gzipped replay CSVs (~9 MB total) and commits them to data/historical/.
+#
+# Requires the KAGGLE_API_TOKEN repository secret.
+# Trigger manually: Actions tab -> historical-import -> Run workflow.
+name: historical-import
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  import:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download dataset pieces from Kaggle
+        env:
+          KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+        run: python3 scripts/download_kaggle_2024.py --dest work/kaggle2024
+
+      - name: Convert to replay CSVs
+        run: python3 -m anode import-historical --src-dir work/kaggle2024 --out-dir data/historical/2024
+
+      - name: Sanity-check one converted day replays
+        run: |
+          F=$(ls data/historical/2024/*.csv.gz | head -1)
+          python3 - "$F" <<'EOF'
+          import sys
+          from anode.data.replay import CsvReplayProvider
+          snaps = list(CsvReplayProvider(sys.argv[1]).snapshots())
+          assert len(snaps) > 300, "suspiciously few snapshots: %d" % len(snaps)
+          print(sys.argv[1], "->", len(snaps), "snapshots OK")
+          EOF
+
+      - name: Commit historical data
+        run: |
+          git config user.name "anode-collector[bot]"
+          git config user.email "actions@github.com"
+          git add data/historical
+          git commit -m "Import 2024 historical option data (Kaggle, nearest expiry) [skip ci]" || echo "nothing to commit"
+          git pull --rebase origin master || true
+          git push || (git pull --rebase origin master && git push)

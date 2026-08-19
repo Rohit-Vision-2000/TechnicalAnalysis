@@ -682,6 +682,58 @@ def cmd_collect(args, cfg) -> int:
     return 0
 
 
+def cmd_import_historical(args, cfg) -> int:
+    """Convert downloaded Kaggle 2024 files into replay CSVs (gzipped)."""
+    import gzip
+    import shutil
+
+    from anode.data.historical import (
+        convert_day, load_spot_minutes, nearest_expiry_files,
+    )
+
+    src = Path(args.src_dir)
+    out_dir = Path(args.out_dir)
+    options = sorted(str(p.name) for p in (src / "options").glob("NIFTY-*.csv"))
+    picks = nearest_expiry_files(options)
+    if not picks:
+        print("no option files found under {}/options".format(src))
+        return 1
+    spot_cache = {}
+    done = skipped = 0
+    for day in sorted(picks):
+        fname, expiry = picks[day]
+        month_names = ("JAN", "FEB", "MAR", "APR", "MAY", "JUN",
+                       "JUL", "AUG", "SEP", "OCT", "NOV", "DEC")
+        month_key = "{}{}".format(day.year, month_names[day.month - 1])
+        if month_key not in spot_cache:
+            spot_path = src / "spot" / "Nifty-{}.csv".format(month_key)
+            spot_cache[month_key] = spot_path if spot_path.exists() else None
+        spot_path = spot_cache[month_key]
+        if spot_path is None:
+            print("SKIP {}: no spot file for {}".format(day, month_key))
+            skipped += 1
+            continue
+        out_gz = out_dir / "{}.csv.gz".format(day.isoformat())
+        if out_gz.exists() and not args.force:
+            continue
+        spot_minutes = load_spot_minutes(spot_path, day)
+        tmp = out_dir / "{}.csv.tmp".format(day.isoformat())
+        n = convert_day(src / "options" / fname, spot_minutes, expiry, day, tmp)
+        if n == 0:
+            print("SKIP {}: produced no snapshots".format(day))
+            tmp.unlink()
+            skipped += 1
+            continue
+        with open(tmp, "rb") as f_in, gzip.open(out_gz, "wb") as f_out:
+            shutil.copyfileobj(f_in, f_out)
+        tmp.unlink()
+        done += 1
+        if done % 25 == 0:
+            print("converted {} days ...".format(done))
+    print("Imported {} days -> {} ({} skipped)".format(done, out_dir, skipped))
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
         prog="anode",
@@ -813,6 +865,16 @@ def build_parser() -> argparse.ArgumentParser:
                     help="IST market open — waits until then (HH:MM)")
     sp.add_argument("--until", default="15:30",
                     help="IST stop time (HH:MM)")
+
+    sp = sub.add_parser(
+        "import-historical",
+        help="convert downloaded Kaggle 2024 data into gzipped replay CSVs",
+    )
+    sp.add_argument("--src-dir", required=True,
+                    help="directory produced by scripts/download_kaggle_2024.py")
+    sp.add_argument("--out-dir", default="data/historical/2024")
+    sp.add_argument("--force", action="store_true",
+                    help="reconvert days whose output already exists")
     return p
 
 
@@ -838,6 +900,7 @@ COMMANDS = {
     "failures": cmd_failures,
     "run": cmd_run,
     "collect": cmd_collect,
+    "import-historical": cmd_import_historical,
 }
 
 

@@ -19,6 +19,8 @@ form one snapshot.
 """
 
 import csv
+import gzip
+import io
 import logging
 from datetime import datetime
 from pathlib import Path
@@ -48,8 +50,14 @@ class CsvReplayProvider(MarketDataProvider):
         if not self.path.exists():
             raise FileNotFoundError("replay file not found: {}".format(self.path))
 
+    def _open(self):
+        if self.path.suffix == ".gz":
+            return io.TextIOWrapper(gzip.open(self.path, "rb"),
+                                    encoding="utf-8", newline="")
+        return open(self.path, "r", encoding="utf-8", newline="")
+
     def snapshots(self) -> Iterator[MarketSnapshot]:
-        with open(self.path, "r", encoding="utf-8", newline="") as fh:
+        with self._open() as fh:
             reader = csv.DictReader(fh)
             if reader.fieldnames is None:
                 return
