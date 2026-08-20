@@ -37,11 +37,23 @@ rate, +2,565 net.** Nearly the entire annual loss comes from afternoon
 entries. Weaker clusters (small n, noted only): ADX 50-60 0/5; PUT side
 33% wr vs CALL 41%; PCR>1.2 1/6.
 
-**Next step (in progress): EXP-001** — hypothesis: "no new entries at or
-after 13:00 IST"; candidate = STRAT-001 + entry cutoff (single change);
-baseline-vs-candidate on identical 2024 data with walk-forward split
-(form on H1, validate on H2). Monthly P&L recorded in the scratch DB;
-stability across months must be checked before acceptance.
+**Next step (NOT started — first task for the next session): EXP-001** —
+hypothesis: "no new entries at or after 13:00 IST"; candidate = STRAT-001
++ entry cutoff (single change); baseline-vs-candidate on identical 2024
+data with walk-forward split (form on H1, validate on H2); check
+stability across months before acceptance. Note: the decision engine has
+no entry-cutoff config key yet — add engine support (config-driven, with
+tests) first, then create the candidate via new-strategy.
+
+## 2026-08-20 — HANDOFF
+
+Research moves to the user's 24/7 server. The laptop session that did all
+of the above stops here to avoid two concurrent researchers. Whoever reads
+this on the server: you are now the sole researcher. The scratch backtest
+DBs were on the laptop and are NOT in the repo — rebuild in minutes with
+the driver pattern above (single process + seed each day with the previous
+day's snapshots). Backtest baseline to reproduce/verify: 173 trades,
+36.4% win rate, net −31,489.
 
 **Operational fixes this cycle:** collection crons moved ~25 min early
 (GitHub fires late); leg-A staging bug fixed (git add aborts on missing
