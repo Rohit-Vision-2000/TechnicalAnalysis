@@ -111,7 +111,10 @@ jobs:
         run: |
           git config user.name "anode-collector[bot]"
           git config user.email "actions@github.com"
-          git add data/collected data/reports 2>/dev/null || true
+          # add each path separately: one missing pathspec must not abort
+          # staging the other (leg A lost its morning CSV to this)
+          git add data/collected 2>/dev/null || true
+          git add data/reports 2>/dev/null || true
           if git commit -m "Market data ${{ steps.cfg.outputs.date }} leg ${{ steps.cfg.outputs.leg }} [skip ci]"; then
             git pull --rebase origin master || true
             git push || (git pull --rebase origin master && git push)
