@@ -10,8 +10,10 @@ name: nse-collect
 
 on:
   schedule:
-    - cron: "40 3 * * 1-5"   # 09:10 IST — leg A (09:15–12:20)
-    - cron: "50 6 * * 1-5"   # 12:20 IST — leg B (12:20–15:30) + EOD
+    # GitHub cron regularly fires 30-45 min late; schedule well before the
+    # target so the collector's --open gate does the precise waiting.
+    - cron: "25 3 * * 1-5"   # 08:55 IST — leg A (09:15–12:20)
+    - cron: "35 6 * * 1-5"   # 12:05 IST — leg B (12:20–15:30) + EOD
   workflow_dispatch:
     inputs:
       leg:
