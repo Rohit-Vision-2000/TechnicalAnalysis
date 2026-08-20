@@ -24,6 +24,12 @@ class Database:
         self.conn = sqlite3.connect(str(path))
         self.conn.row_factory = sqlite3.Row
         self.conn.execute("PRAGMA foreign_keys = ON")
+        if path != ":memory:":
+            # WAL + NORMAL keeps commits durable at the application level
+            # while avoiding a full fsync per snapshot — the write pattern
+            # is thousands of tiny commits (one per snapshot/decision).
+            self.conn.execute("PRAGMA journal_mode = WAL")
+            self.conn.execute("PRAGMA synchronous = NORMAL")
 
     def init_schema(self) -> None:
         sql = SCHEMA_PATH.read_text(encoding="utf-8")
