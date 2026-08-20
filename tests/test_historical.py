@@ -65,7 +65,11 @@ class TestConvertDay(unittest.TestCase):
             ce_16 = [o for o in snaps[1].options if o.option_type == "CE"][0]
             self.assertEqual(ce_16.oi_change, 100)  # 1100 - 1000
             self.assertEqual(snaps[0].options[0].expiry, "2024-04-04")
-            self.assertIsNone(snaps[0].options[0].bid)
+            # bid/ask are conservative estimates around LTP
+            ce_15 = [o for o in snaps[0].options if o.option_type == "CE"][0]
+            self.assertAlmostEqual(ce_15.bid, 100.5 - 0.15, places=2)
+            self.assertAlmostEqual(ce_15.ask, 100.5 + 0.15, places=2)
+            self.assertIsNone(ce_15.iv)
 
     def test_minute_without_spot_skipped(self):
         with tempfile.TemporaryDirectory() as tmp:

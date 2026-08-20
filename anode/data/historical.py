@@ -7,10 +7,12 @@ datetime is HH:MM) plus monthly spot files
 (`datetime,open,high,low,close,volume`, datetime is YYYY-MM-DD HH:MM).
 
 Output matches CsvReplayProvider's layout, so a converted day replays
-through the normal pipeline. Historical data has NO bid/ask and NO IV —
-those columns stay blank, and any research on this data must account for
-estimated spreads. oi_change is derived per contract from consecutive
-minutes.
+through the normal pipeline. Historical data has NO bid/ask and NO IV.
+IV stays blank; bid/ask are filled with a deliberately CONSERVATIVE
+estimate (wider than real NIFTY weekly ATM spreads) so the liquidity
+gate and fills behave realistically while biasing costs AGAINST the
+strategy, never in its favor. oi_change is derived per contract from
+consecutive minutes.
 """
 
 import csv
@@ -30,6 +32,19 @@ REPLAY_COLUMNS = (
     "timestamp", "nifty_spot", "expiry", "strike", "option_type", "ltp",
     "bid", "ask", "volume", "oi", "oi_change", "iv",
 )
+
+
+def estimate_spread(ltp: float) -> Tuple[float, float]:
+    """Conservative (bid, ask) estimate around a historical LTP.
+
+    Real NIFTY weekly ATM spreads are usually 0.05-0.15% of premium;
+    we charge 0.30% (0.15% each side) with a 5-paise floor per side, so
+    backtest costs are strictly worse than live, never better.
+    """
+    half = max(0.05, round(ltp * 0.0015, 2))
+    bid = max(0.05, round(ltp - half, 2))
+    ask = round(ltp + half, 2)
+    return bid, ask
 
 
 def parse_ddmmmyy(s: str) -> date:
@@ -93,8 +108,9 @@ def convert_day(
                 if not (lo <= strike <= hi) or close <= 0:
                     continue
                 change = oi - prev_oi.get((strike, right), oi)
+                bid, ask = estimate_spread(close)
                 rows.append([ts, spot, expiry_iso, strike, right, close,
-                             "", "", vol, oi, change, ""])
+                             bid, ask, vol, oi, change, ""])
             # update prev_oi for every contract seen this minute (windowed
             # contracts included), so re-entering the window stays sane
             for key_, (_, oi_, _) in minutes[hhmm].items():
