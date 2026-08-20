@@ -23,8 +23,25 @@ Root causes, from reason-code aggregation — NOT strategy weaknesses:
    floor — wider than real NIFTY weekly ATM spreads, so backtest costs
    are harsher than live). Commit b90ca30.
 
-**Run 2 (prev-day seeding + estimated spreads): in progress.**
-Results to be appended below when available.
+**Run 2 (prev-day seeding + estimated spreads): COMPLETE — first real
+baseline.** 88,002 decisions → 173 signals → 173 closed trades.
+Win rate 36.4%, net P&L **−31,489** (1 lot, costs+estimated spreads).
+
+Exit decomposition: STOP_LOSS 86 trades −131,532; TARGET 47 trades
++94,662; TIME_EXIT 29 trades +7,663; EOD 11 trades −2,281. Payoff ratio
+~1.32 — too small for a 36% win rate.
+
+**Strongest cluster (n=67, well above the 30-obs gate): entries at/after
+13:00 IST — 26% win rate, −34,054 net; entries before 13:00 — ~42% win
+rate, +2,565 net.** Nearly the entire annual loss comes from afternoon
+entries. Weaker clusters (small n, noted only): ADX 50-60 0/5; PUT side
+33% wr vs CALL 41%; PCR>1.2 1/6.
+
+**Next step (in progress): EXP-001** — hypothesis: "no new entries at or
+after 13:00 IST"; candidate = STRAT-001 + entry cutoff (single change);
+baseline-vs-candidate on identical 2024 data with walk-forward split
+(form on H1, validate on H2). Monthly P&L recorded in the scratch DB;
+stability across months must be checked before acceptance.
 
 **Operational fixes this cycle:** collection crons moved ~25 min early
 (GitHub fires late); leg-A staging bug fixed (git add aborts on missing
