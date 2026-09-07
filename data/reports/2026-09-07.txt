@@ -1,0 +1,34 @@
+(data source: live NSE collected via GitHub Actions, replayed deterministically)
+ANODE daily report — 2026-09-07
+Production strategy: STRAT-001
+Decisions: 0 signals, 92 no-trade
+Trades: none
+
+Failure analysis over 1 closed trades (overall win rate: 100.0%)
+
+  regime:
+    TRENDING_BULLISH trades=1    win_rate=100.0%  net_pnl=1819.32  (low sample)
+
+  direction:
+    CALL           trades=1    win_rate=100.0%  net_pnl=1819.32  (low sample)
+
+  rsi_bucket:
+    60-70          trades=1    win_rate=100.0%  net_pnl=1819.32  (low sample)
+
+  adx_bucket:
+    20-30          trades=1    win_rate=100.0%  net_pnl=1819.32  (low sample)
+
+  level_distance:
+    no_level       trades=1    win_rate=100.0%  net_pnl=1819.32  (low sample)
+
+  iv_change:
+    rising         trades=1    win_rate=100.0%  net_pnl=1819.32  (low sample)
+
+  pcr_bucket:
+    0.8-1.2        trades=1    win_rate=100.0%  net_pnl=1819.32  (low sample)
+
+  hour:
+    14             trades=1    win_rate=100.0%  net_pnl=1819.32  (low sample)
+
+  exit_reason:
+    TARGET         trades=1    win_rate=100.0%  net_pnl=1819.32  (low sample)
